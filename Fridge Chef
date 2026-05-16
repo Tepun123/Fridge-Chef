@@ -1,65 +1,59 @@
-import requests
 import os
+import requests
 from dotenv import load_dotenv
+
+# Import the functions from your brand-new database.py file!
+import database
 
 # Load variables from .env
 load_dotenv()
 SPOONACULAR_API_KEY = os.getenv("SPOONACULAR_API_KEY")
 
-# Temporary debug lines:
-
 
 def get_recipes_by_ingredients(ingredients_list):
-    """
-    Fetches recipes using the Spoonacular 'findByIngredients' endpoint.
-    """
+    """Fetches recipes using the Spoonacular 'findByIngredients' endpoint."""
     url = "https://api.spoonacular.com/recipes/findByIngredients"
-    
-    # Format ingredients for the API (comma-separated string)
     ingredients_string = ",".join(ingredients_list)
     
-    # Parameters for the API call
     params = {
         "apiKey": SPOONACULAR_API_KEY,
         "ingredients": ingredients_string,
-        "number": 5,           # Number of recipes to return
-        "ranking": 1,          # 1 = Maximize used ingredients, 2 = Minimize missing
-        "ignorePantry": True   # Ignore common items like water, salt, etc.
+        "number": 5,           
+        "ranking": 1,          
+        "ignorePantry": True   
     }
 
     try:
         response = requests.get(url, params=params)
-        
-        # Check for successful response
         if response.status_code == 200:
-            recipes = response.json()
-            return recipes
+            return response.json()
         else:
             print(f"Error: {response.status_code}")
-            print(response.text)
             return None
-            
     except Exception as e:
         print(f"An error occurred: {e}")
         return None
 
-# --- Test Execution ---
-if __name__ == "__main__":
-    # Your hardcoded list of ingredients
-    my_ingredients = ["chicken", "spinach", "garlic", "heavy cream"]
 
+# --- Execution Block ---
+if __name__ == "__main__":
+    # 1. Call the database functions using the 'database.' prefix
+    database.init_database()
+    database.create_user("Tepun")
+    print("-" * 30)
+
+    # 2. Run your recipe search logic
+    my_ingredients = ["chicken", "spinach", "garlic", "heavy cream"]
     print(f"Searching for recipes using: {', '.join(my_ingredients)}...\n")
     results = get_recipes_by_ingredients(my_ingredients)
 
     if results:
-        for i, recipe in enumerate(results, 1):
-            print(f"{i}. {recipe['title']}")
-            print(f"   Missing ingredients count: {recipe['missedIngredientCount']}")
-            
-            # List the missing ingredients specifically
-            if recipe['missedIngredients']:
-                missing = [item['name'] for item in recipe['missedIngredients']]
-                print(f"   You still need: {', '.join(missing)}")
-            print("-" * 30)
+        # Grab the top recipe to test our history logger
+        first_recipe = results[0]
+        print(f"Top choice found: {first_recipe['title']} (ID: {first_recipe['id']})")
+        
+        # 3. Log the recipe to User #1's history in the other file!
+        database.log_cooked_recipe(user_id=1, recipe_id=first_recipe['id'], recipe_title=first_recipe['title'])
+        print("-" * 30)
     else:
         print("No recipes found or there was an issue with the API call.")
