@@ -1,21 +1,42 @@
 import os
+import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 import database
- # Make sure this matches your terminal script's file name!
 
 # 1. Load configuration and secret keys from your .env file
 load_dotenv()
 
 # 2. Initialize the Flask App server instance
 app = Flask(__name__)
-CORS(app)  # Allows your browser-based React app to talk to this backend safely
+CORS(app, origins="http://localhost:5173")  # Allows your browser-based React app to talk to this backend safely
 
 # 3. Initialize your database setup on startup
 database.init_database()
 database.create_user("Tepun")
 USER_ID = 1  # Standard user account number for our project sessions
+
+def get_recipes_by_ingredients(ingredients_list):
+    """Fetches matching recipes from the Spoonacular API based on fridge items."""
+    api_key = os.getenv("SPOONACULAR_API_KEY")
+    if not api_key:
+        print("Error: SPOONACULAR_API_KEY is missing from your .env file!")
+        return []
+
+    ingredients_string = ",".join(ingredients_list)
+    url = f"https://api.spoonacular.com/recipes/findByIngredients?ingredients={ingredients_string}&number=5&apiKey={api_key}"
+
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"Spoonacular API Error: Status code {response.status_code}")
+            return []
+    except Exception as e:
+        print(f"Network error connecting to Spoonacular: {e}")
+        return []
 
 # --- API ROUTES ---
 
@@ -34,6 +55,12 @@ def add_fridge_item():
         database.add_ingredient(USER_ID, item_name)
         return jsonify({"message": "Added successfully!"}), 201
     return jsonify({"error": "Blank name"}), 400
+
+@app.route('/api/fridge/<int:item_id>', methods=['DELETE'])
+def remove_fridge_item(item_id):
+    """Removes an ingredient from the database."""
+    database.remove_ingredient(USER_ID, item_id)
+    return jsonify({"message": "Removed successfully!"}), 200
 
 @app.route('/api/recipes', methods=['GET'])
 def search_recipes():

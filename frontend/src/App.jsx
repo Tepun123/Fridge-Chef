@@ -1,115 +1,208 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 
 function App() {
-  const [fridge, setFridge] = useState([]);
+  const [ingredients, setIngredients] = useState([]);
   const [newIngredient, setNewIngredient] = useState('');
   const [recipes, setRecipes] = useState([]);
+  const [loadingRecipes, setLoadingRecipes] = useState(false);
 
-  const fetchFridge = async () => {
+  // Fetch the current fridge inventory on startup
+  useEffect(() => {
+    fetchFridgeItems();
+  }, []);
+
+  const fetchFridgeItems = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:5000/api/fridge');
-      const data = await res.json();
-      setFridge(data);
-    } catch (err) {
-      console.error("Error fetching fridge:", err);
+      const response = await fetch('http://localhost:5000/api/fridge');
+      const data = await response.json();
+      setIngredients(data);
+    } catch (error) {
+      console.error('Error fetching fridge items:', error);
     }
   };
 
-  useEffect(() => {
-    fetchFridge();
-  }, []);
-
+  // Add an ingredient to the backend database
   const handleAddIngredient = async (e) => {
     e.preventDefault();
     if (!newIngredient.trim()) return;
 
-    await fetch('http://127.0.0.1:5000/api/fridge', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ingredient: newIngredient })
-    });
-
-    setNewIngredient(''); 
-    fetchFridge();        
-  };
-
-  const handleSearchRecipes = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:5000/api/recipes');
-      const data = await res.json();
-      setRecipes(data);
-    } catch (err) {
-      console.error("Error searching recipes:", err);
+      const response = await fetch('http://localhost:5000/api/fridge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ingredient: newIngredient.trim() }),
+      });
+
+      if (response.ok) {
+        setNewIngredient('');
+        fetchFridgeItems(); // Refresh list from DB
+      }
+    } catch (error) {
+      console.error('Error adding ingredient:', error);
     }
   };
 
+  // REMOVE an ingredient using its database row ID
+  const handleRemoveIngredient = async (itemId) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/fridge/${itemId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        fetchFridgeItems(); // Refresh list to reflect removal
+      }
+    } catch (error) {
+      console.error('Error removing ingredient:', error);
+    }
+  };
+
+  // Search Spoonacular API via backend matching route
+  const handleSearchRecipes = async () => {
+    setLoadingRecipes(true);
+    try {
+      const response = await fetch('http://localhost:5000/api/recipes');
+      const data = await response.json();
+      setRecipes(data);
+    } catch (error) {
+      console.error('Error searching recipes:', error);
+    } finally {
+      setLoadingRecipes(false);
+    }
+  };
+
+  // Log recipe cooking event to SQLite history
   const handleLogCooked = async (recipe) => {
-    await fetch('http://127.0.0.1:5000/api/history', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: recipe.id, title: recipe.title })
-    });
-    alert(`Logged "${recipe.title}" to your cooked history list!`);
+    try {
+      const response = await fetch('http://localhost:5000/api/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: recipe.id, title: recipe.title }),
+      });
+      if (response.ok) {
+        alert(`Successfully logged "${recipe.title}" to cooking history!`);
+      }
+    } catch (error) {
+      console.error('Error logging history:', error);
+    }
   };
 
   return (
-    <div style={{ padding: '30px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto' }}>
-      <h1>Fridge Chef 🍳</h1>
-      <hr />
+    <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px', fontFamily: 'sans-serif' }}>
+      <header style={{ textAlign: 'center', marginBottom: '40px' }}>
+        <h1>The Minimalist Fridge Chef 🍳</h1>
+        <p>Manage your inventory and discover cooking ideas instantly.</p>
+      </header>
 
-      <h3>Add Ingredient</h3>
-      <form onSubmit={handleAddIngredient}>
-        <input 
-          type="text" 
-          value={newIngredient} 
-          onChange={(e) => setNewIngredient(e.target.value)} 
-          placeholder="e.g. Chicken, Garlic, Beef..."
-          style={{ padding: '8px', marginRight: '10px', width: '220px' }}
-        />
-        <button type="submit" style={{ padding: '8px 15px', cursor: 'pointer' }}>Add to Fridge</button>
-      </form>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px' }}>
+        
+        {/* LEFT COLUMN: FRIDGE INVENTORY */}
+        <div>
+          <h2>My Fridge Inventory</h2>
+          
+          <form onSubmit={handleAddIngredient} style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="e.g., Tomatoes, Chicken, Eggs"
+              value={newIngredient}
+              onChange={(e) => setNewIngredient(e.target.value)}
+              style={{ flexGrow: 1, padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+            />
+            <button type="submit" style={{ padding: '8px 16px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+              Add
+            </button>
+          </form>
 
-      <h3>My Virtual Fridge Inventory</h3>
-      {fridge.length === 0 ? (
-        <p style={{ color: '#888' }}>Your fridge is empty. Type an item above to add it!</p>
-      ) : (
-        <ul style={{ lineHeight: '2' }}>
-          {fridge.map((item, index) => (
-            <li key={index} style={{ textTransform: 'capitalize' }}>{item}</li>
-          ))}
-        </ul>
-      )}
+          {ingredients.length === 0 ? (
+            <p style={{ color: '#666', fontStyle: 'italic' }}>Your fridge is empty. Add items to get started!</p>
+          ) : (
+            <ul style={{ listStyleType: 'none', padding: 0 }}>
+              {ingredients.map((item) => (
+                <li 
+                  key={item.id} 
+                  style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    padding: '10px', 
+                    borderBottom: '1px solid #eee',
+                    backgroundColor: '#f9f9f9',
+                    marginBottom: '5px',
+                    borderRadius: '4px'
+                  }}
+                >
+                  <span>{item.name}</span>
+                  <button 
+                    onClick={() => handleRemoveIngredient(item.id)}
+                    style={{ 
+                      backgroundColor: 'transparent', 
+                      color: '#dc3545', 
+                      border: 'none', 
+                      fontSize: '16px', 
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      padding: '0 5px'
+                    }}
+                    title="Remove item"
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
 
-      <button 
-        onClick={handleSearchRecipes} 
-        style={{ padding: '12px 24px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold', marginTop: '10px' }}
-      >
-        Find Recipes 🔍
-      </button>
-
-      {recipes.length > 0 && (
-        <div style={{ marginTop: '25px' }}>
-          <h3>Recipes matching your inventory:</h3>
-          {recipes.map((recipe) => (
-            <div key={recipe.id} style={{ border: '1px solid #ccc', padding: '15px', marginBottom: '12px', borderRadius: '6px', backgroundColor: '#f9f9f9' }}>
-              <h4 style={{ margin: '0 0 8px 0' }}>{recipe.title}</h4>
-              
-              {recipe.missedIngredients && recipe.missedIngredients.length > 0 && (
-                <p style={{ fontSize: '14px', color: '#666', margin: '0 0 12px 0' }}>
-                  <strong>Missing ingredients:</strong> {recipe.missedIngredients.map(i => i.name).join(', ')}
-                </p>
-              )}
-
-              <button 
-                onClick={() => handleLogCooked(recipe)} 
-                style={{ padding: '6px 12px', cursor: 'pointer', backgroundColor: '#007BFF', color: 'white', border: 'none', borderRadius: '4px' }}
-              >
-                Mark as Cooked ✅
-              </button>
-            </div>
-          ))}
+          <button
+            onClick={handleSearchRecipes}
+            disabled={ingredients.length === 0 || loadingRecipes}
+            style={{
+              marginTop: '20px',
+              width: '100%',
+              padding: '12px',
+              backgroundColor: '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              fontSize: '16px',
+              cursor: ingredients.length === 0 ? 'not-allowed' : 'pointer',
+              opacity: ingredients.length === 0 ? 0.6 : 1
+            }}
+          >
+            {loadingRecipes ? 'Searching Recipes...' : 'Find Recipes 🔍'}
+          </button>
         </div>
-      )}
+
+        {/* RIGHT COLUMN: API RECIPE SEARCH RESULTS */}
+        <div>
+          <h2>Matching Recipes</h2>
+          {recipes.length === 0 ? (
+            <p style={{ color: '#666', fontStyle: 'italic' }}>No recipe targets queried yet.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              {recipes.map((recipe) => (
+                <div key={recipe.id} style={{ border: '1px solid #ddd', padding: '15px', borderRadius: '6px', backgroundColor: '#fff' }}>
+                  <img src={recipe.image} alt={recipe.title} style={{ width: '100%', borderRadius: '4px', marginBottom: '10px' }} />
+                  <h3 style={{ margin: '0 0 10px 0', fontSize: '18px' }}>{recipe.title}</h3>
+                  <button 
+                    onClick={() => handleLogCooked(recipe)}
+                    style={{ 
+                      padding: '6px 12px', 
+                      backgroundColor: '#17a2b8', 
+                      color: 'white', 
+                      border: 'none', 
+                      borderRadius: '4px', 
+                      cursor: 'pointer' 
+                    }}
+                  >
+                    Mark as Cooked ✔
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+      </div>
     </div>
   );
 }
