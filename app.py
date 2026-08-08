@@ -10,21 +10,35 @@ load_dotenv()
 
 # 2. Initialize the Flask App server instance
 app = Flask(__name__)
-CORS(app, origins="http://localhost:5173")  # Allows your browser-based React app to talk to this backend safely
+CORS(app, origins="http://localhost:5173")  # Allows React frontend requests
 
-# 3. Initialize your database setup on startup
+# 3. Initialize database setup on startup
 database.init_database()
 database.create_user("Tepun")
-USER_ID = 1  # Standard user account number for our project sessions
+USER_ID = 1  # Standard user account ID
 
 def get_recipes_by_ingredients(ingredients_list):
-    """Fetches matching recipes from the Spoonacular API based on fridge items."""
+    """Fetches matching recipes from Spoonacular API based on fridge items."""
     api_key = os.getenv("SPOONACULAR_API_KEY")
     if not api_key:
         print("Error: SPOONACULAR_API_KEY is missing from your .env file!")
         return []
 
-    ingredients_string = ",".join(ingredients_list)
+    # Extract clean string names regardless of whether items are dicts or strings
+    clean_names = []
+    for item in ingredients_list:
+        if isinstance(item, dict):
+            clean_names.append(item.get('name', ''))
+        elif isinstance(item, str):
+            clean_names.append(item)
+
+    # Filter out any blank values
+    clean_names = [name for name in clean_names if name]
+
+    if not clean_names:
+        return []
+
+    ingredients_string = ",".join(clean_names)
     url = f"https://api.spoonacular.com/recipes/findByIngredients?ingredients={ingredients_string}&number=5&apiKey={api_key}"
 
     try:
@@ -32,7 +46,7 @@ def get_recipes_by_ingredients(ingredients_list):
         if response.status_code == 200:
             return response.json()
         else:
-            print(f"Spoonacular API Error: Status code {response.status_code}")
+            print(f"Spoonacular API Error: Status code {response.status_code} - {response.text}")
             return []
     except Exception as e:
         print(f"Network error connecting to Spoonacular: {e}")

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import './App.css';
 
 function App() {
   const [ingredients, setIngredients] = useState([]);
   const [newIngredient, setNewIngredient] = useState('');
   const [recipes, setRecipes] = useState([]);
   const [loadingRecipes, setLoadingRecipes] = useState(false);
+  const [selectedRecipe, setSelectedRecipe] = useState(null);
 
-  // Fetch the current fridge inventory on startup
   useEffect(() => {
     fetchFridgeItems();
   }, []);
@@ -21,7 +22,6 @@ function App() {
     }
   };
 
-  // Add an ingredient to the backend database
   const handleAddIngredient = async (e) => {
     e.preventDefault();
     if (!newIngredient.trim()) return;
@@ -35,29 +35,29 @@ function App() {
 
       if (response.ok) {
         setNewIngredient('');
-        fetchFridgeItems(); // Refresh list from DB
+        fetchFridgeItems();
       }
     } catch (error) {
       console.error('Error adding ingredient:', error);
     }
   };
 
-  // REMOVE an ingredient using its database row ID
-  const handleRemoveIngredient = async (itemId) => {
+  const handleRemoveIngredient = async (item, index) => {
+    const targetId = typeof item === 'object' && item !== null && item.id ? item.id : index;
+
     try {
-      const response = await fetch(`http://localhost:5000/api/fridge/${itemId}`, {
+      const response = await fetch(`http://localhost:5000/api/fridge/${targetId}`, {
         method: 'DELETE',
       });
 
       if (response.ok) {
-        fetchFridgeItems(); // Refresh list to reflect removal
+        fetchFridgeItems();
       }
     } catch (error) {
       console.error('Error removing ingredient:', error);
     }
   };
 
-  // Search Spoonacular API via backend matching route
   const handleSearchRecipes = async () => {
     setLoadingRecipes(true);
     try {
@@ -71,7 +71,6 @@ function App() {
     }
   };
 
-  // Log recipe cooking event to SQLite history
   const handleLogCooked = async (recipe) => {
     try {
       const response = await fetch('http://localhost:5000/api/history', {
@@ -80,122 +79,94 @@ function App() {
         body: JSON.stringify({ id: recipe.id, title: recipe.title }),
       });
       if (response.ok) {
-        alert(`Successfully logged "${recipe.title}" to cooking history!`);
+        alert(`Logged "${recipe.title}" to cooking history!`);
+        setSelectedRecipe(null);
       }
     } catch (error) {
       console.error('Error logging history:', error);
     }
   };
 
-  return (
-    <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px', fontFamily: 'sans-serif' }}>
-      <header style={{ textAlign: 'center', marginBottom: '40px' }}>
-        <h1>The Minimalist Fridge Chef 🍳</h1>
-        <p>Manage your inventory and discover cooking ideas instantly.</p>
-      </header>
+  const getItemName = (item) => {
+    if (typeof item === 'string') return item;
+    if (typeof item === 'object' && item !== null) return item.name || item.ingredient;
+    return String(item);
+  };
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px' }}>
+  return (
+    <div className="app-container">
+      {/* Top Bar Navigation */}
+      <div className="header-nav">
+        <button className="icon-btn">☰</button>
+        <div style={{ display: 'flex', gap: '15px' }}>
+          <button className="icon-btn">👤</button>
+          <button className="icon-btn">⚙</button>
+        </div>
+      </div>
+
+      <h1 className="app-title">The Minimalist Fridge Chef</h1>
+
+      <div className="hero-btn-container">
+        <button className="ur-fridge-btn">Ur Fridge</button>
+      </div>
+
+      {/* Main Two-Column Dashboard */}
+      <div className="dashboard-grid">
         
-        {/* LEFT COLUMN: FRIDGE INVENTORY */}
-        <div>
-          <h2>My Fridge Inventory</h2>
+        {/* Left Panel: Inventory */}
+        <div className="panel-card">
+          <h2 className="panel-title">My Fridge Inventory</h2>
           
-          <form onSubmit={handleAddIngredient} style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+          <form onSubmit={handleAddIngredient} className="add-ingredient-form">
             <input
               type="text"
-              placeholder="e.g., Tomatoes, Chicken, Eggs"
+              placeholder="Search items..."
               value={newIngredient}
               onChange={(e) => setNewIngredient(e.target.value)}
-              style={{ flexGrow: 1, padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+              className="search-input"
             />
-            <button type="submit" style={{ padding: '8px 16px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-              Add
-            </button>
+            <button type="submit" className="add-btn">Add</button>
           </form>
 
-          {ingredients.length === 0 ? (
-            <p style={{ color: '#666', fontStyle: 'italic' }}>Your fridge is empty. Add items to get started!</p>
-          ) : (
-            <ul style={{ listStyleType: 'none', padding: 0 }}>
-              {ingredients.map((item) => (
-                <li 
-                  key={item.id} 
-                  style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center', 
-                    padding: '10px', 
-                    borderBottom: '1px solid #eee',
-                    backgroundColor: '#f9f9f9',
-                    marginBottom: '5px',
-                    borderRadius: '4px'
-                  }}
+          <div className="tags-container">
+            {ingredients.map((item, index) => (
+              <div key={item.id || index} className="ingredient-tag">
+                <span>{getItemName(item)}</span>
+                <button 
+                  onClick={() => handleRemoveIngredient(item, index)} 
+                  className="tag-remove-btn"
                 >
-                  <span>{item.name}</span>
-                  <button 
-                    onClick={() => handleRemoveIngredient(item.id)}
-                    style={{ 
-                      backgroundColor: 'transparent', 
-                      color: '#dc3545', 
-                      border: 'none', 
-                      fontSize: '16px', 
-                      cursor: 'pointer',
-                      fontWeight: 'bold',
-                      padding: '0 5px'
-                    }}
-                    title="Remove item"
-                  >
-                    ✕
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
 
           <button
             onClick={handleSearchRecipes}
             disabled={ingredients.length === 0 || loadingRecipes}
-            style={{
-              marginTop: '20px',
-              width: '100%',
-              padding: '12px',
-              backgroundColor: '#007bff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '16px',
-              cursor: ingredients.length === 0 ? 'not-allowed' : 'pointer',
-              opacity: ingredients.length === 0 ? 0.6 : 1
-            }}
+            className="find-recipes-btn"
           >
-            {loadingRecipes ? 'Searching Recipes...' : 'Find Recipes 🔍'}
+            {loadingRecipes ? 'Searching...' : 'Find Recipes 🔍'}
           </button>
         </div>
 
-        {/* RIGHT COLUMN: API RECIPE SEARCH RESULTS */}
-        <div>
-          <h2>Matching Recipes</h2>
+        {/* Right Panel: Recommendation Page */}
+        <div className="panel-card">
+          <h2 className="panel-title">Recommendation Page</h2>
+          
           {recipes.length === 0 ? (
-            <p style={{ color: '#666', fontStyle: 'italic' }}>No recipe targets queried yet.</p>
+            <p style={{ color: '#888', fontStyle: 'italic' }}>Click "Find Recipes" to generate recommendations.</p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            <div className="recipes-grid">
               {recipes.map((recipe) => (
-                <div key={recipe.id} style={{ border: '1px solid #ddd', padding: '15px', borderRadius: '6px', backgroundColor: '#fff' }}>
-                  <img src={recipe.image} alt={recipe.title} style={{ width: '100%', borderRadius: '4px', marginBottom: '10px' }} />
-                  <h3 style={{ margin: '0 0 10px 0', fontSize: '18px' }}>{recipe.title}</h3>
-                  <button 
-                    onClick={() => handleLogCooked(recipe)}
-                    style={{ 
-                      padding: '6px 12px', 
-                      backgroundColor: '#17a2b8', 
-                      color: 'white', 
-                      border: 'none', 
-                      borderRadius: '4px', 
-                      cursor: 'pointer' 
-                    }}
-                  >
-                    Mark as Cooked ✔
-                  </button>
+                <div 
+                  key={recipe.id} 
+                  className="recipe-card"
+                  onClick={() => setSelectedRecipe(recipe)}
+                >
+                  <img src={recipe.image} alt={recipe.title} className="recipe-circle-img" />
+                  <h3 className="recipe-card-title">{recipe.title}</h3>
                 </div>
               ))}
             </div>
@@ -203,6 +174,33 @@ function App() {
         </div>
 
       </div>
+
+      {/* Recipe Side-Pop-Up Modal */}
+      {selectedRecipe && (
+        <div className="modal-overlay" onClick={() => setSelectedRecipe(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close-btn" onClick={() => setSelectedRecipe(null)}>✕</button>
+            <img src={selectedRecipe.image} alt={selectedRecipe.title} className="modal-img" />
+            
+            <h2 className="modal-title">{selectedRecipe.title}</h2>
+            <div className="modal-meta">Cook time: 25 mins | Ingredients available</div>
+
+            <div className="modal-subtitle">Instructions</div>
+            <ol className="modal-instructions">
+              <li>Prepare ingredients from your fridge list.</li>
+              <li>Sauté in pan over medium heat.</li>
+              <li>Season to taste and serve hot.</li>
+            </ol>
+
+            <button 
+              className="start-cooking-btn"
+              onClick={() => handleLogCooked(selectedRecipe)}
+            >
+              START COOKING
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
