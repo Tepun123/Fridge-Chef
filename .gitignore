@@ -1,3 +1,26 @@
+# Environment & Secret Files
+.env
+.env.local
 *.env
+
+# SQLite Databases & Storage
 *.db
-__pycache__/database.cpython-314.pyc
+*.sqlite
+instance/
+
+# Python Bytecode & Environments
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Node / React Frontend Artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+.DS_Store
+
+# Editor / IDE settings
+.vscode/
+.idea/
