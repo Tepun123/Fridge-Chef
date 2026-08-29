@@ -16,7 +16,8 @@ app = Flask(__name__)
 CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
 
 # 3. Configure SQLAlchemy
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///fridge_chef.db'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(BASE_DIR, 'fridge_chef.db')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
@@ -30,10 +31,19 @@ with app.app_context():
     # Get or Create default user "Tepun"
     user = User.query.filter_by(username="Tepun").first()
     if not user:
-        user = User(username="Tepun")
+        user = User(username="Tepun", password="password123")  # Default password for testing
         db.session.add(user)
         db.session.commit()
     USER_ID = user.id
+
+    # Get or Create default user "Tepun"
+    user = User.query.filter_by(username="Test").first()
+    if not user:
+        user = User(username="Test", password="password1234")  # Default password for testing
+        db.session.add(user)
+        db.session.commit()
+    USER_ID = user.id
+    
 
 def get_recipes_by_ingredients(ingredients_list):
     """Fetches matching recipes from Spoonacular API based on fridge items."""

@@ -9,6 +9,7 @@ class User(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
+    password = db.Column(db.String(80), unique=False, nullable=False)
 
     # Relationships to child tables (cascades deletes if a user is deleted)
     ingredients = db.relationship('Ingredient', backref='user', lazy=True, cascade="all, delete-orphan")
