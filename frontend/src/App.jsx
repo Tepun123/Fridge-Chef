@@ -12,6 +12,42 @@ function App() {
     fetchFridgeItems();
   }, []);
 
+
+  const [user, setUser] = useState(null);
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+
+  // Check who's logged in when the app loads
+  useEffect(() => {
+    fetch('http://localhost:5000/api/me', { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => setUser(data.user));
+  }, []);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    const res = await fetch('http://localhost:5000/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(loginForm),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setUser(data.user);
+      fetchFridgeItems();
+    } else {
+      alert(data.error);
+    }
+  };
+
+  const handleLogout = async () => {
+    await fetch('http://localhost:5000/api/logout', {
+      method: 'POST',
+      credentials: 'include',
+    });
+    setUser(null);
+  };
+
   const fetchFridgeItems = async () => {
     try {
       const response = await fetch('http://localhost:5000/api/fridge');

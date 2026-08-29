@@ -1,7 +1,8 @@
 import os
+from functools import wraps
 from urllib.parse import quote
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -13,7 +14,11 @@ load_dotenv()
 
 # 2. Initialize Flask App
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
+# supports_credentials is required so the browser will send/receive the session cookie
+CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173"], supports_credentials=True)
+
+# SECRET_KEY signs the session cookie - set a real one in your .env file
+app.config['SECRET_KEY'] = os.getenv("SECRET_KEY", "dev-secret-change-me")
 
 # 3. Configure SQLAlchemy
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -22,28 +27,19 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
 
-# 4. Set up database tables and standard user on startup
-USER_ID = None
-
 with app.app_context():
-    db.create_all()  # Replaces init_database()
-    
-    # Get or Create default user "Tepun"
-    user = User.query.filter_by(username="Tepun").first()
-    if not user:
-        user = User(username="Tepun", password="password123")  # Default password for testing
-        db.session.add(user)
-        db.session.commit()
-    USER_ID = user.id
+    db.create_all()
 
-    # Get or Create default user "Tepun"
-    user = User.query.filter_by(username="Test").first()
-    if not user:
-        user = User(username="Test", password="password1234")  # Default password for testing
-        db.session.add(user)
-        db.session.commit()
-    USER_ID = user.id
-    
+
+def login_required(f):
+    """Blocks a route unless someone is logged in."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if "user_id" not in session:
+            return jsonify({"error": "Not logged in"}), 401
+        return f(*args, **kwargs)
+    return wrapper
+
 
 def get_recipes_by_ingredients(ingredients_list):
     """Fetches matching recipes from Spoonacular API based on fridge items."""
@@ -77,34 +73,91 @@ def get_recipes_by_ingredients(ingredients_list):
         print(f"Network error connecting to Spoonacular: {e}")
         return []
 
-# --- API ROUTES ---
+# --- AUTH ROUTES ---
+
+@app.route('/api/register', methods=['POST'])
+def register():
+    """Creates a new account."""
+    data = request.get_json(silent=True) or {}
+    username = (data.get('username') or '').strip()
+    password = data.get('password') or ''
+
+    if not username or not password:
+        return jsonify({"error": "Username and password are required"}), 400
+
+    if User.query.filter_by(username=username).first():
+        return jsonify({"error": "That username is already taken"}), 409
+
+    user = User(username=username)
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+
+    return jsonify({"message": "Account created! You can now log in."}), 201
+
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    """Logs a user in and starts a session."""
+    data = request.get_json(silent=True) or {}
+    username = (data.get('username') or '').strip()
+    password = data.get('password') or ''
+
+    user = User.query.filter_by(username=username).first()
+    if not user or not user.check_password(password):
+        return jsonify({"error": "Invalid username or password"}), 401
+
+    session['user_id'] = user.id
+    return jsonify({"message": f"Welcome back, {user.username}!", "user": user.to_dict()}), 200
+
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    """Ends the current session."""
+    session.pop('user_id', None)
+    return jsonify({"message": "Logged out successfully"}), 200
+
+
+@app.route('/api/me', methods=['GET'])
+def me():
+    """Tells the frontend who (if anyone) is currently logged in."""
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({"user": None}), 200
+    user = User.query.get(user_id)
+    return jsonify({"user": user.to_dict() if user else None}), 200
+
+# --- API ROUTES (all scoped to the logged-in user) ---
 
 @app.route('/api/fridge', methods=['GET'])
+@login_required
 def get_fridge():
-    """Fetches all ingredients for the user."""
-    ingredients = Ingredient.query.filter_by(user_id=USER_ID).all()
+    """Fetches all ingredients for the logged-in user."""
+    ingredients = Ingredient.query.filter_by(user_id=session['user_id']).all()
     return jsonify([item.to_dict() for item in ingredients]), 200
 
 @app.route('/api/fridge', methods=['POST'])
+@login_required
 def add_fridge_item():
-    """Adds a new ingredient for the user."""
+    """Adds a new ingredient for the logged-in user."""
     data = request.get_json(silent=True) or {}
     item_name = data.get('ingredient')
 
     if not item_name or not item_name.strip():
         return jsonify({"error": "Ingredient name cannot be blank"}), 400
 
-    new_item = Ingredient(user_id=USER_ID, name=item_name.lower().strip())
+    new_item = Ingredient(user_id=session['user_id'], name=item_name.lower().strip())
     db.session.add(new_item)
     db.session.commit()
 
     return jsonify({"message": f"Added '{item_name}' successfully!", "item": new_item.to_dict()}), 201
 
 @app.route('/api/fridge/<int:item_id>', methods=['DELETE'])
+@login_required
 def remove_fridge_item(item_id):
-    """Removes an ingredient standardizing authorization."""
-    item = Ingredient.query.filter_by(id=item_id, user_id=USER_ID).first()
-    
+    """Removes an ingredient, scoped to the logged-in user."""
+    item = Ingredient.query.filter_by(id=item_id, user_id=session['user_id']).first()
+
     if not item:
         return jsonify({"error": "Item not found"}), 404
 
@@ -113,9 +166,10 @@ def remove_fridge_item(item_id):
     return jsonify({"message": "Removed successfully!"}), 200
 
 @app.route('/api/recipes', methods=['GET'])
+@login_required
 def search_recipes():
-    """Fetches matching recipes from Spoonacular using current fridge items."""
-    ingredients = Ingredient.query.filter_by(user_id=USER_ID).all()
+    """Fetches matching recipes from Spoonacular using the logged-in user's fridge items."""
+    ingredients = Ingredient.query.filter_by(user_id=session['user_id']).all()
     if not ingredients:
         return jsonify([])
 
@@ -123,8 +177,9 @@ def search_recipes():
     return jsonify(results), 200
 
 @app.route('/api/history', methods=['GET', 'POST'])
+@login_required
 def recipe_history():
-    """Logs a chosen recipe (POST) or retrieves past history (GET)."""
+    """Logs a chosen recipe (POST) or retrieves past history (GET) for the logged-in user."""
     if request.method == 'POST':
         data = request.get_json(silent=True) or {}
         recipe_id = data.get('id')
@@ -133,13 +188,13 @@ def recipe_history():
         if not recipe_id or not title:
             return jsonify({"error": "Missing recipe 'id' or 'title'"}), 400
 
-        entry = History(user_id=USER_ID, recipe_id=recipe_id, title=title)
+        entry = History(user_id=session['user_id'], recipe_id=recipe_id, title=title)
         db.session.add(entry)
         db.session.commit()
         return jsonify({"message": f"Successfully logged {title}!"}), 201
 
     # GET request
-    history = History.query.filter_by(user_id=USER_ID).order_by(History.timestamp.desc()).all()
+    history = History.query.filter_by(user_id=session['user_id']).order_by(History.timestamp.desc()).all()
     return jsonify([entry.to_dict() for entry in history]), 200
 
 if __name__ == '__main__':

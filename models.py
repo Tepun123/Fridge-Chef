@@ -1,5 +1,6 @@
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Initialize SQLAlchemy instance (to be registered with Flask app)
 db = SQLAlchemy()
@@ -9,11 +10,20 @@ class User(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
-    password = db.Column(db.String(80), unique=False, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
 
     # Relationships to child tables (cascades deletes if a user is deleted)
     ingredients = db.relationship('Ingredient', backref='user', lazy=True, cascade="all, delete-orphan")
     history = db.relationship('History', backref='user', lazy=True, cascade="all, delete-orphan")
+
+    def set_password(self, raw_password):
+        self.password_hash = generate_password_hash(raw_password)
+
+    def check_password(self, raw_password):
+        return check_password_hash(self.password_hash, raw_password)
+
+    def to_dict(self):
+        return {"id": self.id, "username": self.username}
 
     def __repr__(self):
         return f"<User {self.username}>"
