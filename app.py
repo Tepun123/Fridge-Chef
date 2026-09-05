@@ -15,7 +15,7 @@ load_dotenv()
 # 2. Initialize Flask App
 app = Flask(__name__)
 # supports_credentials is required so the browser will send/receive the session cookie
-CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173"], supports_credentials=True)
+CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://192.168.1.130:5173"], supports_credentials=True)
 
 # SECRET_KEY signs the session cookie - set a real one in your .env file
 app.config['SECRET_KEY'] = os.getenv("SECRET_KEY", "dev-secret-change-me")
@@ -198,4 +198,4 @@ def recipe_history():
     return jsonify([entry.to_dict() for entry in history]), 200
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    app.run(port=5000, debug=True, host="0.0.0.0")
