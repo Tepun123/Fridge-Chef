@@ -17,6 +17,8 @@ function App() {
   const [recipes, setRecipes] = useState([]);
   const [loadingRecipes, setLoadingRecipes] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState(null);
+  const [recipeDetails, setRecipeDetails] = useState(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
 
   // Check for an existing session when the app first loads
   useEffect(() => {
@@ -107,10 +109,11 @@ function App() {
       setIngredients([]);
       setRecipes([]);
       setSelectedRecipe(null);
+      setRecipeDetails(null);
     }
   };
 
-  // --- Fridge / recipe handlers (all now send credentials) ---
+  // --- Fridge / recipe handlers (all send credentials) ---
 
   const fetchFridgeItems = async () => {
     try {
@@ -185,11 +188,47 @@ function App() {
         return;
       }
       const data = await response.json();
-      setRecipes(data);
+      setRecipes(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error searching recipes:', error);
     } finally {
       setLoadingRecipes(false);
+    }
+  };
+
+  const closeRecipeModal = () => {
+    setSelectedRecipe(null);
+    setRecipeDetails(null);
+  };
+
+  // Opens the modal immediately, then loads the real details from the API
+  const handleSelectRecipe = async (recipe) => {
+    setSelectedRecipe(recipe);
+    setRecipeDetails(null);
+    setLoadingDetails(true);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/recipes/${recipe.id}`, {
+        credentials: 'include',
+      });
+
+      if (response.status === 401) {
+        setUser(null);
+        return;
+      }
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setRecipeDetails(data);
+      } else {
+        setRecipeDetails({ readyInMinutes: null, ingredients: [], instructions: [] });
+      }
+    } catch (error) {
+      console.error('Error fetching recipe details:', error);
+      setRecipeDetails({ readyInMinutes: null, ingredients: [], instructions: [] });
+    } finally {
+      setLoadingDetails(false);
     }
   };
 
@@ -203,7 +242,7 @@ function App() {
       });
       if (response.ok) {
         alert(`Logged "${recipe.title}" to cooking history!`);
-        setSelectedRecipe(null);
+        closeRecipeModal();
       } else if (response.status === 401) {
         setUser(null);
       }
@@ -373,7 +412,7 @@ function App() {
                 <div
                   key={recipe.id}
                   className="recipe-card"
-                  onClick={() => setSelectedRecipe(recipe)}
+                  onClick={() => handleSelectRecipe(recipe)}
                 >
                   <img src={recipe.image} alt={recipe.title} className="recipe-circle-img" />
                   <h3 className="recipe-card-title">{recipe.title}</h3>
@@ -387,20 +426,39 @@ function App() {
 
       {/* Recipe Side-Pop-Up Modal */}
       {selectedRecipe && (
-        <div className="modal-overlay" onClick={() => setSelectedRecipe(null)}>
+        <div className="modal-overlay" onClick={closeRecipeModal}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close-btn" onClick={() => setSelectedRecipe(null)}>✕</button>
+            <button className="modal-close-btn" onClick={closeRecipeModal}>✕</button>
             <img src={selectedRecipe.image} alt={selectedRecipe.title} className="modal-img" />
 
             <h2 className="modal-title">{selectedRecipe.title}</h2>
-            <div className="modal-meta">Cook time: 25 mins | Ingredients available</div>
+
+            <div className="modal-meta">
+              {loadingDetails
+                ? 'Loading...'
+                : recipeDetails?.readyInMinutes
+                ? `Cook time: ${recipeDetails.readyInMinutes} mins`
+                : 'Cook time: not available'}
+              {' | '}
+              You have {selectedRecipe.usedIngredientCount} of{' '}
+              {selectedRecipe.usedIngredientCount + selectedRecipe.missedIngredientCount} ingredients
+            </div>
 
             <div className="modal-subtitle">Instructions</div>
-            <ol className="modal-instructions">
-              <li>Prepare ingredients from your fridge list.</li>
-              <li>Sauté in pan over medium heat.</li>
-              <li>Season to taste and serve hot.</li>
-            </ol>
+
+            {loadingDetails && <p style={{ color: '#888' }}>Loading instructions...</p>}
+
+            {!loadingDetails && recipeDetails && recipeDetails.instructions.length > 0 && (
+              <ol className="modal-instructions">
+                {recipeDetails.instructions.map((step, i) => (
+                  <li key={i}>{step}</li>
+                ))}
+              </ol>
+            )}
+
+            {!loadingDetails && recipeDetails && recipeDetails.instructions.length === 0 && (
+              <p style={{ color: '#888' }}>No instructions available for this recipe.</p>
+            )}
 
             <button
               className="start-cooking-btn"
